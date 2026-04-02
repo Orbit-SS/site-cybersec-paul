@@ -30,8 +30,8 @@ export default function Home() {
             Authorized Learning Environment · Ethical Use Only
           </div>
           <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6">
-            <span className="text-white">Master</span>{" "}
-            <span className="text-green-400">THC-Hydra</span>
+            <span className="text-white">Hello</span>{" "}
+            <span className="text-green-400">Paul</span>
           </h1>
           <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto mb-4 leading-relaxed">
             The industry-standard network login auditing tool. Learn how security professionals
