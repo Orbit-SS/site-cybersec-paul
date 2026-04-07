@@ -59,8 +59,22 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Terminal mockup */}
-        <div className="relative max-w-3xl mx-auto mt-20">
+        {/* Robot woman */}
+        <div className="relative max-w-5xl mx-auto mt-20 mb-0 flex flex-col md:flex-row items-center gap-8">
+          <div className="relative flex-shrink-0 w-64 md:w-72">
+            <div className="absolute inset-0 rounded-xl bg-green-500/10 blur-2xl" />
+            <img
+              src="https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=600&q=80"
+              alt="AI android"
+              className="relative rounded-xl border border-green-900/40 shadow-2xl shadow-green-950/60 w-full object-cover"
+              style={{ filter: "saturate(0.7) brightness(0.85) hue-rotate(80deg)" }}
+            />
+            <div className="absolute inset-0 rounded-xl ring-1 ring-inset ring-green-400/10" />
+            <div className="absolute bottom-3 left-3 text-[10px] text-green-700 font-mono tracking-widest">SYS::UNIT_47</div>
+          </div>
+
+          {/* Terminal mockup */}
+          <div className="flex-1 w-full">
           <div className="bg-[#0d1117] border border-green-900/50 rounded-lg overflow-hidden shadow-2xl shadow-green-950/50 text-left">
             <div className="flex items-center gap-2 px-4 py-3 border-b border-green-900/30 bg-[#080d08]">
               <span className="w-3 h-3 rounded-full bg-red-500/70" />
@@ -87,6 +101,7 @@ export default function Home() {
                 <span className="text-green-300 animate-pulse">_</span>
               </p>
             </div>
+          </div>
           </div>
         </div>
       </section>
