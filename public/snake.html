@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0f0a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: monospace;
+    color: #86efac;
+  }
+  #ui {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    width: 480px;
+    max-width: 100%;
+  }
+  #score-label { color: #16a34a; font-size: 11px; letter-spacing: .15em; text-transform: uppercase; }
+  #score-val   { color: #4ade80; font-size: 18px; font-weight: bold; }
+  #btn {
+    border: 1px solid #16a34a;
+    color: #4ade80;
+    background: transparent;
+    font-family: monospace;
+    font-size: 12px;
+    padding: 5px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #btn:hover { background: rgba(74,222,128,.08); }
+  canvas {
+    border: 1px solid rgba(20,83,45,.6);
+    border-radius: 8px;
+    display: block;
+    cursor: crosshair;
+  }
+  #msg {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #374151;
+    letter-spacing: .05em;
+  }
+  #gameover {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #f87171;
+    letter-spacing: .15em;
+    min-height: 20px;
+  }
+</style>
+</head>
+<body>
+<div id="ui">
+  <span id="score-label">Score <span id="score-val">0</span></span>
+  <button id="btn" onclick="startGame()">[ START ]</button>
+</div>
+<canvas id="c"></canvas>
+<div id="gameover"></div>
+<div id="msg">Click [ START ], then click the grid to steer &middot; Arrow keys / WASD also work</div>
+
+<script>
+const COLS = 20, ROWS = 16, CELL = 24;
+const W = COLS * CELL, H = ROWS * CELL;
+const TICK = 130;
+const OPP = { UP:'DOWN', DOWN:'UP', LEFT:'RIGHT', RIGHT:'LEFT' };
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+canvas.width  = W;
+canvas.height = H;
+
+let snake, dir, nextDir, food, score, loop, running, hoverCell;
+
+function rand(n) { return Math.floor(Math.random() * n); }
+
+function randomFood() {
+  let f;
+  do { f = { x: rand(COLS), y: rand(ROWS) }; }
+  while (snake.some(s => s.x === f.x && s.y === f.y));
+  return f;
+}
+
+function dirToward(head, target) {
+  const dx = target.x - head.x, dy = target.y - head.y;
+  let cands = Math.abs(dx) >= Math.abs(dy)
+    ? [dx > 0 ? 'RIGHT' : 'LEFT', dy > 0 ? 'DOWN' : 'UP']
+    : [dy > 0 ? 'DOWN' : 'UP', dx > 0 ? 'RIGHT' : 'LEFT'];
+  return cands.find(d => d !== OPP[dir]) || dir;
+}
+
+function draw() {
+  // Background
+  ctx.fillStyle = '#0a0f0a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(20,83,45,0.25)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath(); ctx.moveTo(x*CELL, 0); ctx.lineTo(x*CELL, H); ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y*CELL); ctx.lineTo(W, y*CELL); ctx.stroke();
+  }
+
+  // Hover
+  if (hoverCell) {
+    ctx.fillStyle = 'rgba(74,222,128,0.08)';
+    ctx.fillRect(hoverCell.x*CELL, hoverCell.y*CELL, CELL, CELL);
+  }
+
+  // Food
+  ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 14;
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(food.x*CELL+5, food.y*CELL+5, CELL-10, CELL-10);
+  ctx.shadowBlur = 0;
+
+  // Snake
+  snake.forEach((seg, i) => {
+    if (i === 0) { ctx.shadowColor = '#4ade80'; ctx.shadowBlur = 8; }
+    ctx.fillStyle = i === 0 ? '#86efac' : i % 2 === 0 ? '#16a34a' : '#15803d';
+    ctx.fillRect(seg.x*CELL+1, seg.y*CELL+1, CELL-2, CELL-2);
+    ctx.shadowBlur = 0;
+  });
+
+  // Arrow on head
+  const h = snake[0];
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.save();
+  ctx.translate(h.x*CELL + CELL/2, h.y*CELL + CELL/2);
+  ctx.rotate({ RIGHT:0, DOWN:Math.PI/2, LEFT:Math.PI, UP:-Math.PI/2 }[nextDir]);
+  ctx.beginPath(); ctx.moveTo(6,0); ctx.lineTo(-4,-4); ctx.lineTo(-4,4); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function startGame() {
+  clearInterval(loop);
+  snake   = [{ x:10, y:8 }];
+  dir     = 'RIGHT';
+  nextDir = 'RIGHT';
+  food    = randomFood();
+  score   = 0;
+  running = true;
+  document.getElementById('score-val').textContent = '0';
+  document.getElementById('btn').textContent = '[ PLAYING ]';
+  document.getElementById('btn').style.borderColor = '#14532d';
+  document.getElementById('btn').style.color = '#166534';
+  document.getElementById('btn').style.cursor = 'default';
+  document.getElementById('gameover').textContent = '';
+  document.getElementById('msg').textContent = 'Click the grid to steer \u00b7 Arrow keys / WASD also work';
+  draw();
+
+  loop = setInterval(() => {
+    dir = nextDir;
+    const head = snake[0];
+    const nx = { x: head.x, y: head.y };
+    if (dir === 'UP')    nx.y--;
+    if (dir === 'DOWN')  nx.y++;
+    if (dir === 'LEFT')  nx.x--;
+    if (dir === 'RIGHT') nx.x++;
+
+    if (nx.x < 0 || nx.x >= COLS || nx.y < 0 || nx.y >= ROWS ||
+        snake.some(s => s.x === nx.x && s.y === nx.y)) {
+      clearInterval(loop);
+      running = false;
+      document.getElementById('gameover').textContent = `GAME OVER — Score: ${score}`;
+      document.getElementById('btn').textContent = '[ RESTART ]';
+      document.getElementById('btn').style.borderColor = '#16a34a';
+      document.getElementById('btn').style.color = '#4ade80';
+      document.getElementById('btn').style.cursor = 'pointer';
+      draw(); return;
+    }
+
+    const ate = nx.x === food.x && nx.y === food.y;
+    snake.unshift(nx);
+    if (ate) {
+      score += 10;
+      document.getElementById('score-val').textContent = score;
+      food = randomFood();
+    } else {
+      snake.pop();
+    }
+    draw();
+  }, TICK);
+}
+
+function getCell(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: Math.floor((e.clientX - r.left) * (W / r.width) / CELL),
+    y: Math.floor((e.clientY - r.top)  * (H / r.height) / CELL),
+  };
+}
+
+canvas.addEventListener('click', e => {
+  if (!running) return;
+  const cell = getCell(e);
+  nextDir = dirToward(snake[0], cell);
+});
+
+canvas.addEventListener('mousemove', e => {
+  hoverCell = getCell(e);
+  if (running) draw();
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoverCell = null;
+  if (running) draw();
+});
+
+document.addEventListener('keydown', e => {
+  const map = {
+    ArrowUp:'UP', w:'UP', W:'UP',
+    ArrowDown:'DOWN', s:'DOWN', S:'DOWN',
+    ArrowLeft:'LEFT', a:'LEFT', A:'LEFT',
+    ArrowRight:'RIGHT', d:'RIGHT', D:'RIGHT',
+  };
+  const d = map[e.key];
+  if (!d) return;
+  if (e.key.startsWith('Arrow')) e.preventDefault();
+  if (d !== OPP[dir]) nextDir = d;
+});
+
+// Initial blank grid
+snake = [{ x:10, y:8 }]; dir = 'RIGHT'; nextDir = 'RIGHT'; food = { x:15, y:8 }; running = false;
+draw();
+</script>
+</body>
+</html>
