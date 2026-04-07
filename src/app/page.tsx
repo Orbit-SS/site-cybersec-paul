@@ -1,3 +1,5 @@
+import SnakeGame from "@/components/SnakeGame";
+
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#0a0f0a] text-gray-100 font-mono">
@@ -200,6 +202,20 @@ export default function Home() {
               <div className="text-xs text-gray-600 mt-0.5">{p.port}</div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Snake Game */}
+      <section className="px-6 py-24 max-w-5xl mx-auto">
+        <div className="mb-14 text-center">
+          <p className="text-green-600 text-xs uppercase tracking-widest mb-3">Mini-Game</p>
+          <h2 className="text-3xl md:text-4xl font-bold text-white">Snake</h2>
+          <p className="text-gray-500 mt-3 text-sm max-w-md mx-auto">
+            Take a break. Arrow keys or WASD to play.
+          </p>
+        </div>
+        <div className="flex justify-center">
+          <SnakeGame />
         </div>
       </section>
 
