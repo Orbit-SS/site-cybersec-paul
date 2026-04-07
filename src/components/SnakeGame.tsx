@@ -20,17 +20,37 @@ function randomFood(snake: Pt[]): Pt {
   return f;
 }
 
+// Given a click cell and the snake head, pick the best direction to turn
+function dirToward(head: Pt, target: Pt, current: Dir): Dir {
+  const dx = target.x - head.x;
+  const dy = target.y - head.y;
+  // Prefer the axis with larger delta, fall back to the other
+  const candidates: Dir[] = [];
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx > 0) candidates.push("RIGHT"); else if (dx < 0) candidates.push("LEFT");
+    if (dy > 0) candidates.push("DOWN");  else if (dy < 0) candidates.push("UP");
+  } else {
+    if (dy > 0) candidates.push("DOWN");  else if (dy < 0) candidates.push("UP");
+    if (dx > 0) candidates.push("RIGHT"); else if (dx < 0) candidates.push("LEFT");
+  }
+  // Pick first candidate that isn't reversing
+  for (const d of candidates) {
+    if (d !== OPP[current]) return d;
+  }
+  return current;
+}
+
 export default function SnakeGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // All mutable game state lives here — never causes re-renders
   const snake = useRef<Pt[]>([{ x: 12, y: 10 }]);
   const dir = useRef<Dir>("RIGHT");
   const nextDir = useRef<Dir>("RIGHT");
   const food = useRef<Pt>({ x: 18, y: 10 });
+  const hoverCell = useRef<Pt | null>(null);
+  const clickFlash = useRef<Pt | null>(null);
 
-  // Only React state: what the overlay should show
   const [phase, setPhase] = useState<"idle" | "running" | "dead">("idle");
   const [score, setScore] = useState(0);
 
@@ -40,14 +60,33 @@ export default function SnakeGame() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Background
     ctx.fillStyle = "#0a0f0a";
     ctx.fillRect(0, 0, W, H);
 
-    // Grid dots
-    ctx.fillStyle = "rgba(20,83,45,0.15)";
-    for (let x = 0; x < COLS; x++)
-      for (let y = 0; y < ROWS; y++)
-        ctx.fillRect(x * CELL + CELL / 2 - 1, y * CELL + CELL / 2 - 1, 2, 2);
+    // Grid lines
+    ctx.strokeStyle = "rgba(20,83,45,0.18)";
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x <= COLS; x++) {
+      ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, H); ctx.stroke();
+    }
+    for (let y = 0; y <= ROWS; y++) {
+      ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(W, y * CELL); ctx.stroke();
+    }
+
+    // Hover cell highlight
+    const hc = hoverCell.current;
+    if (hc) {
+      ctx.fillStyle = "rgba(74,222,128,0.07)";
+      ctx.fillRect(hc.x * CELL, hc.y * CELL, CELL, CELL);
+    }
+
+    // Click flash highlight
+    const cf = clickFlash.current;
+    if (cf) {
+      ctx.fillStyle = "rgba(74,222,128,0.22)";
+      ctx.fillRect(cf.x * CELL, cf.y * CELL, CELL, CELL);
+    }
 
     // Food
     const f = food.current;
@@ -64,6 +103,18 @@ export default function SnakeGame() {
       ctx.fillRect(seg.x * CELL + 1, seg.y * CELL + 1, CELL - 2, CELL - 2);
       ctx.shadowBlur = 0;
     });
+
+    // Draw a subtle arrow on head showing next direction
+    const head = snake.current[0];
+    ctx.fillStyle = "rgba(10,15,10,0.6)";
+    ctx.save();
+    ctx.translate(head.x * CELL + CELL / 2, head.y * CELL + CELL / 2);
+    const rot = { RIGHT: 0, DOWN: Math.PI / 2, LEFT: Math.PI, UP: -Math.PI / 2 };
+    ctx.rotate(rot[nextDir.current]);
+    ctx.beginPath();
+    ctx.moveTo(5, 0); ctx.lineTo(-3, -3); ctx.lineTo(-3, 3); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   function stopLoop() {
@@ -75,19 +126,16 @@ export default function SnakeGame() {
 
   function startGame() {
     stopLoop();
-
-    // Reset all game state
     snake.current = [{ x: 12, y: 10 }];
     dir.current = "RIGHT";
     nextDir.current = "RIGHT";
     food.current = { x: 18, y: 10 };
+    clickFlash.current = null;
     setScore(0);
     setPhase("running");
-
     draw();
 
     intervalRef.current = setInterval(() => {
-      // Advance direction
       dir.current = nextDir.current;
       const head = snake.current[0];
       const nx: Pt = { x: head.x, y: head.y };
@@ -96,7 +144,6 @@ export default function SnakeGame() {
       if (dir.current === "LEFT")  nx.x -= 1;
       if (dir.current === "RIGHT") nx.x += 1;
 
-      // Collision check
       if (
         nx.x < 0 || nx.x >= COLS || nx.y < 0 || nx.y >= ROWS ||
         snake.current.some((s) => s.x === nx.x && s.y === nx.y)
@@ -119,13 +166,45 @@ export default function SnakeGame() {
     }, TICK);
   }
 
-  // Draw initial canvas on mount
+  function getCellFromEvent(e: React.MouseEvent<HTMLCanvasElement>): Pt {
+    const rect = canvasRef.current!.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    return {
+      x: Math.floor((e.clientX - rect.left) * scaleX / CELL),
+      y: Math.floor((e.clientY - rect.top)  * scaleY / CELL),
+    };
+  }
+
+  function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (intervalRef.current === null) { startGame(); return; }
+    const cell = getCellFromEvent(e);
+    const head = snake.current[0];
+    const d = dirToward(head, cell, dir.current);
+    nextDir.current = d;
+
+    // Brief flash on clicked cell
+    clickFlash.current = cell;
+    draw();
+    setTimeout(() => { clickFlash.current = null; draw(); }, 150);
+  }
+
+  function handleMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    const cell = getCellFromEvent(e);
+    hoverCell.current = cell;
+    draw();
+  }
+
+  function handleMouseLeave() {
+    hoverCell.current = null;
+    draw();
+  }
+
   useEffect(() => {
     draw();
     return stopLoop;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keyboard controls
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const map: Record<string, Dir> = {
@@ -159,9 +238,17 @@ export default function SnakeGame() {
         <span className="text-green-400 text-lg font-bold tabular-nums">{score}</span>
       </div>
 
-      {/* Canvas + overlay */}
+      {/* Canvas */}
       <div className="relative border border-green-900/50 rounded-lg overflow-hidden shadow-2xl shadow-green-950/50">
-        <canvas ref={canvasRef} width={W} height={H} className="block" />
+        <canvas
+          ref={canvasRef}
+          width={W}
+          height={H}
+          className="block cursor-crosshair"
+          onClick={handleCanvasClick}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+        />
 
         {phase !== "running" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f0a]/85 backdrop-blur-sm">
@@ -180,7 +267,7 @@ export default function SnakeGame() {
             >
               {phase === "dead" ? "[ RESTART ]" : "[ START ]"}
             </button>
-            <p className="text-gray-700 text-xs mt-4">Arrow keys or WASD to move</p>
+            <p className="text-gray-500 text-xs mt-3">Click the grid to steer · Arrow keys or WASD also work</p>
           </div>
         )}
       </div>
