@@ -5,65 +5,60 @@ import { useEffect, useRef, useState } from "react";
 const COLS = 24;
 const ROWS = 20;
 const CELL = 20;
-const WIDTH = COLS * CELL;
-const HEIGHT = ROWS * CELL;
-const TICK_MS = 120;
+const W = COLS * CELL;
+const H = ROWS * CELL;
+const TICK = 120;
 
 type Dir = "UP" | "DOWN" | "LEFT" | "RIGHT";
-type Point = { x: number; y: number };
-const OPPOSITE: Record<Dir, Dir> = { UP: "DOWN", DOWN: "UP", LEFT: "RIGHT", RIGHT: "LEFT" };
+type Pt = { x: number; y: number };
+const OPP: Record<Dir, Dir> = { UP: "DOWN", DOWN: "UP", LEFT: "RIGHT", RIGHT: "LEFT" };
 
-function rndFood(snake: Point[]): Point {
-  let f: Point;
-  do {
-    f = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
-  } while (snake.some((s) => s.x === f.x && s.y === f.y));
+function randomFood(snake: Pt[]): Pt {
+  let f: Pt;
+  do { f = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) }; }
+  while (snake.some((s) => s.x === f.x && s.y === f.y));
   return f;
-}
-
-function initState() {
-  return {
-    snake: [{ x: 12, y: 10 }] as Point[],
-    dir: "RIGHT" as Dir,
-    nextDir: "RIGHT" as Dir,
-    food: { x: 18, y: 10 } as Point,
-    score: 0,
-  };
 }
 
 export default function SnakeGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gameRef = useRef(initState());
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // All mutable game state lives here — never causes re-renders
+  const snake = useRef<Pt[]>([{ x: 12, y: 10 }]);
+  const dir = useRef<Dir>("RIGHT");
+  const nextDir = useRef<Dir>("RIGHT");
+  const food = useRef<Pt>({ x: 18, y: 10 });
+
+  // Only React state: what the overlay should show
+  const [phase, setPhase] = useState<"idle" | "running" | "dead">("idle");
   const [score, setScore] = useState(0);
-  const [status, setStatus] = useState<"idle" | "running" | "dead">("idle");
-  // Keep a ref in sync so the interval closure can read it
-  const statusRef = useRef<"idle" | "running" | "dead">("idle");
 
   function draw() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    const g = gameRef.current;
 
     ctx.fillStyle = "#0a0f0a";
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.fillRect(0, 0, W, H);
 
-    // Subtle grid
+    // Grid dots
     ctx.fillStyle = "rgba(20,83,45,0.15)";
     for (let x = 0; x < COLS; x++)
       for (let y = 0; y < ROWS; y++)
         ctx.fillRect(x * CELL + CELL / 2 - 1, y * CELL + CELL / 2 - 1, 2, 2);
 
     // Food
+    const f = food.current;
     ctx.shadowColor = "#4ade80";
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 14;
     ctx.fillStyle = "#4ade80";
-    ctx.fillRect(g.food.x * CELL + 4, g.food.y * CELL + 4, CELL - 8, CELL - 8);
+    ctx.fillRect(f.x * CELL + 4, f.y * CELL + 4, CELL - 8, CELL - 8);
     ctx.shadowBlur = 0;
 
     // Snake
-    g.snake.forEach((seg, i) => {
+    snake.current.forEach((seg, i) => {
       ctx.fillStyle = i === 0 ? "#86efac" : i % 2 === 0 ? "#16a34a" : "#15803d";
       if (i === 0) { ctx.shadowColor = "#4ade80"; ctx.shadowBlur = 8; }
       ctx.fillRect(seg.x * CELL + 1, seg.y * CELL + 1, CELL - 2, CELL - 2);
@@ -71,86 +66,90 @@ export default function SnakeGame() {
     });
   }
 
-  // Draw once on mount
-  useEffect(() => { draw(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  function stopLoop() {
+    if (intervalRef.current !== null) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }
 
-  // Game loop — restarts whenever status flips to "running"
-  useEffect(() => {
-    statusRef.current = status;
-    if (status !== "running") return;
+  function startGame() {
+    stopLoop();
 
-    const interval = setInterval(() => {
-      if (statusRef.current !== "running") return;
-      const g = gameRef.current;
-      g.dir = g.nextDir;
+    // Reset all game state
+    snake.current = [{ x: 12, y: 10 }];
+    dir.current = "RIGHT";
+    nextDir.current = "RIGHT";
+    food.current = { x: 18, y: 10 };
+    setScore(0);
+    setPhase("running");
 
-      const head = g.snake[0];
-      const next: Point = { x: head.x, y: head.y };
-      if (g.dir === "UP")    next.y -= 1;
-      if (g.dir === "DOWN")  next.y += 1;
-      if (g.dir === "LEFT")  next.x -= 1;
-      if (g.dir === "RIGHT") next.x += 1;
+    draw();
 
-      // Collisions
+    intervalRef.current = setInterval(() => {
+      // Advance direction
+      dir.current = nextDir.current;
+      const head = snake.current[0];
+      const nx: Pt = { x: head.x, y: head.y };
+      if (dir.current === "UP")    nx.y -= 1;
+      if (dir.current === "DOWN")  nx.y += 1;
+      if (dir.current === "LEFT")  nx.x -= 1;
+      if (dir.current === "RIGHT") nx.x += 1;
+
+      // Collision check
       if (
-        next.x < 0 || next.x >= COLS ||
-        next.y < 0 || next.y >= ROWS ||
-        g.snake.some((s) => s.x === next.x && s.y === next.y)
+        nx.x < 0 || nx.x >= COLS || nx.y < 0 || nx.y >= ROWS ||
+        snake.current.some((s) => s.x === nx.x && s.y === nx.y)
       ) {
-        statusRef.current = "dead";
-        setStatus("dead");
+        stopLoop();
+        setPhase("dead");
         draw();
         return;
       }
 
-      const ate = next.x === g.food.x && next.y === g.food.y;
-      g.snake = [next, ...g.snake];
+      const ate = nx.x === food.current.x && nx.y === food.current.y;
+      snake.current = [nx, ...snake.current];
       if (ate) {
-        g.score += 10;
-        setScore(g.score);
-        g.food = rndFood(g.snake);
+        setScore((s) => s + 10);
+        food.current = randomFood(snake.current);
       } else {
-        g.snake.pop();
+        snake.current.pop();
       }
       draw();
-    }, TICK_MS);
+    }, TICK);
+  }
 
-    return () => clearInterval(interval);
-  }, [status]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Draw initial canvas on mount
+  useEffect(() => {
+    draw();
+    return stopLoop;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard controls
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const dirMap: Record<string, Dir> = {
+      const map: Record<string, Dir> = {
         ArrowUp: "UP", w: "UP", W: "UP",
         ArrowDown: "DOWN", s: "DOWN", S: "DOWN",
         ArrowLeft: "LEFT", a: "LEFT", A: "LEFT",
         ArrowRight: "RIGHT", d: "RIGHT", D: "RIGHT",
       };
-      const newDir = dirMap[e.key];
-      if (!newDir) return;
+      const d = map[e.key];
+      if (!d) return;
       if (["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.key)) e.preventDefault();
-
-      const g = gameRef.current;
-      if (newDir !== OPPOSITE[g.dir]) g.nextDir = newDir;
-
-      if (statusRef.current !== "running") startGame();
+      if (d !== OPP[dir.current]) nextDir.current = d;
+      if (intervalRef.current === null) startGame();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function startGame() {
-    gameRef.current = initState();
-    setScore(0);
-    setStatus("running");
+  function steer(d: Dir) {
+    if (d !== OPP[dir.current]) nextDir.current = d;
+    if (intervalRef.current === null) startGame();
   }
 
-  function steer(dir: Dir) {
-    const g = gameRef.current;
-    if (dir !== OPPOSITE[g.dir]) g.nextDir = dir;
-    if (statusRef.current !== "running") startGame();
-  }
+  const btnCls = "w-10 h-10 flex items-center justify-center border border-green-900/50 rounded text-green-600 text-xs hover:border-green-600 hover:text-green-400 active:bg-green-600/10 transition-colors select-none touch-none";
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -160,34 +159,26 @@ export default function SnakeGame() {
         <span className="text-green-400 text-lg font-bold tabular-nums">{score}</span>
       </div>
 
-      {/* Canvas */}
+      {/* Canvas + overlay */}
       <div className="relative border border-green-900/50 rounded-lg overflow-hidden shadow-2xl shadow-green-950/50">
-        <canvas
-          ref={canvasRef}
-          width={WIDTH}
-          height={HEIGHT}
-          className="block"
-          style={{ imageRendering: "pixelated" }}
-        />
+        <canvas ref={canvasRef} width={W} height={H} className="block" />
 
-        {status !== "running" && (
+        {phase !== "running" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#0a0f0a]/85 backdrop-blur-sm">
-            {status === "dead" && (
+            {phase === "dead" && (
               <>
                 <p className="text-red-400 font-bold text-xl mb-1 tracking-widest">GAME OVER</p>
                 <p className="text-gray-500 text-xs mb-6">Score: {score}</p>
               </>
             )}
-            {status === "idle" && (
-              <p className="text-green-400 text-xs uppercase tracking-widest mb-6">
-                Snake v1.0 — Ready
-              </p>
+            {phase === "idle" && (
+              <p className="text-green-400 text-xs uppercase tracking-widest mb-6">Snake v1.0</p>
             )}
             <button
               onClick={startGame}
               className="border border-green-600 text-green-400 text-sm px-6 py-2 rounded hover:bg-green-600/10 transition-colors font-mono cursor-pointer"
             >
-              {status === "dead" ? "[ RESTART ]" : "[ START ]"}
+              {phase === "dead" ? "[ RESTART ]" : "[ START ]"}
             </button>
             <p className="text-gray-700 text-xs mt-4">Arrow keys or WASD to move</p>
           </div>
@@ -196,12 +187,10 @@ export default function SnakeGame() {
 
       {/* Mobile D-pad */}
       <div className="grid grid-cols-3 gap-1 mt-1 md:hidden">
-        <div />
-        <button onPointerDown={() => steer("UP")}   className="w-10 h-10 flex items-center justify-center border border-green-900/50 rounded text-green-600 text-xs hover:border-green-600 hover:text-green-400 active:bg-green-600/10 transition-colors select-none">▲</button>
-        <div />
-        <button onPointerDown={() => steer("LEFT")} className="w-10 h-10 flex items-center justify-center border border-green-900/50 rounded text-green-600 text-xs hover:border-green-600 hover:text-green-400 active:bg-green-600/10 transition-colors select-none">◄</button>
-        <button onPointerDown={() => steer("DOWN")} className="w-10 h-10 flex items-center justify-center border border-green-900/50 rounded text-green-600 text-xs hover:border-green-600 hover:text-green-400 active:bg-green-600/10 transition-colors select-none">▼</button>
-        <button onPointerDown={() => steer("RIGHT")}className="w-10 h-10 flex items-center justify-center border border-green-900/50 rounded text-green-600 text-xs hover:border-green-600 hover:text-green-400 active:bg-green-600/10 transition-colors select-none">►</button>
+        <div /><button className={btnCls} onPointerDown={() => steer("UP")}>▲</button><div />
+        <button className={btnCls} onPointerDown={() => steer("LEFT")}>◄</button>
+        <button className={btnCls} onPointerDown={() => steer("DOWN")}>▼</button>
+        <button className={btnCls} onPointerDown={() => steer("RIGHT")}>►</button>
       </div>
     </div>
   );
